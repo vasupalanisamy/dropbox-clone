@@ -10,10 +10,13 @@ let rimraf = require('rimraf')
 let mkdirp = require('mkdirp')
 // bluebird.longStackTraces()
 require('longjohn')
+let jot = require('json-over-tcp')
 
 const NODE_ENV = process.env.NODE_ENV
 const PORT = process.env.PORT || 8000
 const ROOT_DIR = path.resolve(process.cwd())
+const TCP_PORT = process.env.TCP_PORT || 8001
+let clientSocketList = []
 
 let app = express()
 
@@ -32,14 +35,17 @@ app.head('*', setFileMeta, sendHeaders, (req, res) => res.end())
 app.delete('*', setFileMeta, (req, res, next) => {
 	async() => {
 		if(!req.stat) return res.send(400, 'Invalid Path')
-		if(req.stat.isDirectory()) {
+		req.isDir = req.stat.isDirectory()
+		if(req.isDir) {
 			await rimraf.promise(req.filePath)
 		} else {
 			await fs.promise.unlink(req.filePath)
 		}
+		req.action = 'delete'
 		res.end()
+		next()
 	}().catch(next)
-})
+}, syncClients)
 
 app.put('*', setFileMeta, setDirDetails, (req, res, next) => {
 	async ()=> {
@@ -47,8 +53,10 @@ app.put('*', setFileMeta, setDirDetails, (req, res, next) => {
 		await mkdirp.promise(req.dirPath)
 		if(!req.isDir) req.pipe(fs.createWriteStream(req.filePath))
 		res.end()
+		req.action = 'create'
+		next()
 	}().catch(next)
-})
+}, syncClients)
 
 app.post('*', setFileMeta, setDirDetails, (req, res, next) => {
 	async ()=> {
@@ -57,8 +65,10 @@ app.post('*', setFileMeta, setDirDetails, (req, res, next) => {
 		await fs.promise.truncate(req.filePath, 0)
 		req.pipe(fs.createWriteStream(req.filePath))
 		res.end()
+		req.action = 'update'
+		next()
 	}().catch(next)
-})
+}, syncClients)
 
 
 function setDirDetails(req, res, next) {
@@ -100,4 +110,31 @@ function sendHeaders(req, res, next) {
 			res.setHeader('Content-Tyoe', contentType)
 		}
 	}(), next)
+}
+
+//Creating a tcp server and register all clients
+let tcpServer = jot.createServer(TCP_PORT)
+tcpServer.listen(TCP_PORT)
+tcpServer.on('connection', function(socket){
+	socket.on('data', function(data){
+		console.log("TCP Connection from client: " + data.clientId)
+	})
+	clientSocketList.push(socket)
+})
+
+function syncClients(req, res, next) {
+	async ()=> {
+		let type = req.isDir ? 'dir' : 'file'
+		for (let i = 0; i < clientSocketList.length; i++) {
+			clientSocketList[i].write(
+				{
+					"action": req.action,
+					"path": req.url,
+					"type": type,
+					"contents": null,
+					"updated": 1427851834642
+				}
+			)
+		}
+	}().catch(next)
 }
