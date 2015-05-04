@@ -22,3 +22,5 @@ Time spent: 12 Hrs
 [Pending] User can connect to the server using an FTP client<BR/>
 
 **Walkthrough**<BR/>
+Please zoom in if image is not visible. Sorry for inconvenience. (Image Location - https://github.com/vasupalanisamy/dropbox-clone/blob/master/dropbox-clone.gif)
+![alt tag](https://github.com/vasupalanisamy/dropbox-clone/blob/master/dropbox-clone.gif)
