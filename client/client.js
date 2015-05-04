@@ -14,7 +14,7 @@ const ACTION_UPDATE = 'update'
 const ACTION_DELETE = 'delete'
 const TYPE_DIR = 'dir'
 
-console.log('ROOT_DIR' + ROOT_DIR)
+console.log('Client is using ROOT_DIR:' + ROOT_DIR)
 
 async function setFileMeta (req) {
 	req.filePath = path.resolve(path.join(ROOT_DIR, req.path))

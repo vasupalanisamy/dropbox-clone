@@ -27,6 +27,8 @@ let clientSocketList = []
 
 let app = express()
 
+console.log('Server is using ROOT_DIR:' + ROOT_DIR)
+
 if (NODE_ENV === 'development') {
 	app.use(morgan('dev'))
 }
@@ -109,12 +111,12 @@ function sendHeaders(req, res, next) {
 				let files = await fs.promise.readdir(req.filePath)
 				res.body = JSON.stringify(files)
 				res.setHeader('Content-Length', res.body.length)
-				res.setHeader('Content-Tyoe', 'application/json')
+				res.setHeader('Content-Type', 'application/json')
 				return
 			}
 			res.setHeader('Content-Length', req.stat.size)
 			let contentType = mime.contentType(path.extname(req.filePath))
-			res.setHeader('Content-Tyoe', contentType)
+			res.setHeader('Content-Type', contentType)
 		}
 	}(), next)
 }
