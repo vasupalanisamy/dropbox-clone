@@ -11,11 +11,18 @@ let mkdirp = require('mkdirp')
 // bluebird.longStackTraces()
 require('longjohn')
 let jot = require('json-over-tcp')
+let argv = require('yargs')
+	.argv
 
 const NODE_ENV = process.env.NODE_ENV
 const PORT = process.env.PORT || 8000
-const ROOT_DIR = path.resolve(process.cwd())
+const ROOT_DIR = argv.dir ? path.resolve(argv.dir) : path.resolve(process.cwd())
 const TCP_PORT = process.env.TCP_PORT || 8001
+const ACTION_CREATE = 'create'
+const ACTION_UPDATE = 'update'
+const ACTION_DELETE = 'delete'
+const TYPE_FILE = 'file'
+const TYPE_DIR = 'dir'
 let clientSocketList = []
 
 let app = express()
@@ -41,31 +48,31 @@ app.delete('*', setFileMeta, (req, res, next) => {
 		} else {
 			await fs.promise.unlink(req.filePath)
 		}
-		req.action = 'delete'
+		req.action = ACTION_DELETE
 		res.end()
-		next()
-	}().catch(next)
-}, syncClients)
-
-app.put('*', setFileMeta, setDirDetails, (req, res, next) => {
-	async ()=> {
-		if(req.stat) return res.send(405, 'File exists')
-		await mkdirp.promise(req.dirPath)
-		if(!req.isDir) req.pipe(fs.createWriteStream(req.filePath))
-		res.end()
-		req.action = 'create'
 		next()
 	}().catch(next)
 }, syncClients)
 
 app.post('*', setFileMeta, setDirDetails, (req, res, next) => {
 	async ()=> {
+		if(req.stat) return res.send(405, 'File exists')
+		await mkdirp.promise(req.dirPath)
+		if(!req.isDir) req.pipe(fs.createWriteStream(req.filePath))
+		res.end()
+		req.action = ACTION_CREATE
+		next()
+	}().catch(next)
+}, syncClients)
+
+app.put('*', setFileMeta, setDirDetails, (req, res, next) => {
+	async ()=> {
 		if(!req.stat) return res.send(405, 'File does not exist')
 		if(req.isDir) return res.send(405, 'Path is a directory')
 		await fs.promise.truncate(req.filePath, 0)
 		req.pipe(fs.createWriteStream(req.filePath))
 		res.end()
-		req.action = 'update'
+		req.action = ACTION_UPDATE
 		next()
 	}().catch(next)
 }, syncClients)
@@ -114,25 +121,36 @@ function sendHeaders(req, res, next) {
 
 //Creating a tcp server and register all clients
 let tcpServer = jot.createServer(TCP_PORT)
-tcpServer.listen(TCP_PORT)
-tcpServer.on('connection', function(socket){
-	socket.on('data', function(data){
-		console.log("TCP Connection from client: " + data.clientId)
+tcpServer.listen(TCP_PORT, ()=> console.log(`TCP Server LISTENING @ 127.0.0.1:${TCP_PORT}`))
+tcpServer.on('connection', (socket) => {
+	socket.on('data', (data) => {
+		console.log("TCP Connection from client: " + data.clientId + ". Registering the client with server to get sync requests.")
 	})
 	clientSocketList.push(socket)
 })
 
 function syncClients(req, res, next) {
 	async ()=> {
-		let type = req.isDir ? 'dir' : 'file'
+		let type = req.isDir ? TYPE_DIR : TYPE_FILE
+		let contents
+
+		if(!req.isDir && req.action !== ACTION_DELETE) {
+			contents = await fs.promise.readFile(req.filePath)
+			console.log(contents)
+		}
+		let stat = (req.action !== ACTION_DELETE) ? await fs.promise.stat(req.filePath) : null
+
+		let updatedTime = stat ? stat.mtime : new Date()
+
+
 		for (let i = 0; i < clientSocketList.length; i++) {
 			clientSocketList[i].write(
 				{
 					"action": req.action,
 					"path": req.url,
 					"type": type,
-					"contents": null,
-					"updated": 1427851834642
+					"contents": contents,
+					"updated": updatedTime
 				}
 			)
 		}
